@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Asistente Virtual S.I.M.O.N</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <style>
+        body {
+            background: linear-gradient(120deg, #a1c4fd, #c2e9fb);
+            color: #333;
+            text-align: center;
+            padding-top: 50px;
+            min-height: 100vh;
+            font-family: 'Ubuntu', sans-serif;
+        }
+
+        .btn-custom, .btn-custom1 {
+            backdrop-filter: blur(10px);
+            background: rgba(255, 255, 255, 0.3);
+            color: #000;
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+            border-radius: 15px;
+            margin: 5px;
+        }
+
+        #conversacion {
+            background: rgba(255, 255, 255, 0.4);
+            backdrop-filter: blur(8px);
+            color: #2a2a2a;
+            padding: 20px;
+            border-radius: 20px;
+            height: 300px;
+            overflow-y: auto;
+            box-shadow: 0 8px 32px rgba(31, 38, 135, 0.3);
+        }
+
+        .logo {
+            max-width: 250px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <audio id="beep" src="{{ url_for('static', filename='beep.mp3') }}"></audio>
+    <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo Asistente" class="logo">
+    <h1><strong>S.I.M.O.N</strong></h1>
+    <p>Presiona el botón o la tecla <strong>Espacio</strong> para hablar con el asistente</p>
+
+    <button onclick="iniciarReconocimiento()" class="btn btn-custom">
+        🎤 Activar Asistente
+    </button>
+    <div id="voz-indicador" style="display: none; margin-top: 10px;" class="btn btn-custom1">
+        <span class="badge bg-warning text-dark">🎙️ Escuchando...</span>
+    </div>
+
+    <button onclick="limpiarConversacion()" class="btn btn-custom1">
+        🧹 Limpiar Pantalla
+    </button>
+    
+    <div class="container mt-5">
+        <div id="conversacion" class="text-start">
+            <!-- Historial de conversación -->
+        </div>
+    </div>
+
+   <script>
+    const reconocimientoVoz = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const reconocimiento = new reconocimientoVoz();
+
+    reconocimiento.lang = 'es-ES';
+    reconocimiento.interimResults = false;
+    reconocimiento.maxAlternatives = 1;
+
+    const contenedor = document.getElementById('conversacion');
+
+    // Cargar historial del localStorage
+    document.addEventListener('DOMContentLoaded', () => {
+        const historial = JSON.parse(localStorage.getItem('historial')) || [];
+        historial.forEach(entry => {
+            agregarConversacion(entry.usuario, entry.asistente, false);
+        });
+    });
+
+    function iniciarReconocimiento() {
+        const beep = document.getElementById("beep");
+        beep.play(); // 🔊 Reproduce el sonido al iniciar
+        reconocimiento.start();
+    }
+
+    reconocimiento.onresult = function(event) {
+        const comando = event.results[0][0].transcript;
+        enviarComando(comando);
+    };
+
+    reconocimiento.onerror = function(event) {
+        console.error("Error de reconocimiento:", event.error);
+    };
+
+    function enviarComando(comando) {
+        agregarConversacion(comando, "⏳ Procesando...", false);
+
+        fetch('/comando', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ comando: comando })
+        })
+        .then(response => response.json())
+        .then(data => {
+            contenedor.lastElementChild.remove();
+            contenedor.lastElementChild.remove();
+
+            agregarConversacion(data.usuario || comando, data.asistente || "❌ Error", true);
+
+            if (data.audio_url) {
+                const audio = new Audio(data.audio_url);
+                audio.play();
+            }
+        })
+        .catch(error => {
+            console.error("Error al enviar el comando:", error);
+            agregarConversacion("Sistema", "❌ Error al procesar el comando", true);
+        });
+    }
+
+    function agregarConversacion(usuario, asistente, guardar = true) {
+        contenedor.innerHTML += `
+            <p><strong>🧑 Usuario:</strong> ${usuario}</p>
+            <p><strong>🤖 S.I.M.O.N:</strong> ${asistente}</p>
+        `;
+        contenedor.scrollTo({ top: contenedor.scrollHeight, behavior: "smooth" });
+
+        if (guardar) {
+            const historial = JSON.parse(localStorage.getItem("historial")) || [];
+            historial.push({ usuario, asistente });
+            localStorage.setItem("historial", JSON.stringify(historial));
+        }
+    }
+
+    function limpiarConversacion() {
+        if (confirm("¿Estás seguro de que deseas limpiar la conversación?")) {
+            contenedor.innerHTML = '';
+            localStorage.removeItem("historial");
+        }
+    }
+
+    document.addEventListener('keydown', (event) => {
+        if (event.code === 'Space') {
+            event.preventDefault();
+            iniciarReconocimiento();
+        }
+    });
+</script>
+
+</body>
+</html>
